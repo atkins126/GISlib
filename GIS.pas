@@ -17,6 +17,8 @@ Uses
 Type
   TCoordinate = record
     X,Y: Float64;
+    Class Function SqrDistance(const [ref] A,B: TCoordinate): Float64; static;
+    Class Function Distance(const [ref] A,B: TCoordinate): Float64; static;
     Constructor Create(Xcoord,Ycoord: Float64);
   end;
 
@@ -26,6 +28,7 @@ Type
     Function Empty: Boolean;
     Procedure Clear;
     Procedure Enclose(Point: TCoordinate); overload;
+    Procedure Enclose(const Points: array of TCoordinate); overload;
     Procedure Enclose(Rect: TCoordinateRect); overload;
     Function Width: Float64;
     Function Height: Float64;
@@ -43,6 +46,16 @@ Type
 ////////////////////////////////////////////////////////////////////////////////
 implementation
 ////////////////////////////////////////////////////////////////////////////////
+
+Class Function TCoordinate.SqrDistance(const [ref] A,B: TCoordinate): Float64;
+begin
+  Result := sqr(A.X-B.X) + sqr(A.Y-B.Y);
+end;
+
+Class Function TCoordinate.Distance(const [ref] A,B: TCoordinate): Float64;
+begin
+  Result := sqrt( sqr(A.X-B.X) + sqr(A.Y-B.Y) );
+end;
 
 Constructor TCoordinate.Create(Xcoord,Ycoord: Float64);
 begin
@@ -71,6 +84,11 @@ begin
   if Point.X > Right then Right := Point.X;
   if Point.Y < Bottom then Bottom := Point.Y;
   if Point.Y > Top then Top := Point.Y;
+end;
+
+Procedure TCoordinateRect.Enclose(const Points: array of TCoordinate);
+begin
+  for var Point := low(Points) to high(Points) do Enclose(Points[Point]);
 end;
 
 Procedure TCoordinateRect.Enclose(Rect: TCoordinateRect);
