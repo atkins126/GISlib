@@ -12,12 +12,13 @@ interface
 ////////////////////////////////////////////////////////////////////////////////
 
 Uses
-  SysUtils,GIS;
+  SysUtils,Generics.Collections,GIS;
 
 Type
   TShapeType = (stEmpty,stPoint,stLine,stPolygon);
 
-  TMultiPoints = array {part} of array {point} of TCoordinate;
+  TMultiPoint = array {point} of TCoordinate;
+  TMultiPoints = array {part} of TMultiPoint;
 
   TShapePart = record
   private
@@ -70,8 +71,9 @@ Type
   private
     FFileName: String;
   public
-    Constructor Create(const FileName: string); virtual;
-    Function ReadShape(out Shape: TGISShape): Boolean; virtual; abstract;
+    Constructor Create(FileName: string); virtual;
+    Function ReadShape(out Shape: TGISShape): Boolean; overload;
+    Function ReadShape(out Shape: TGISShape; out Properies: TArray<TPair<String,Variant>>): Boolean; overload; virtual; abstract;
   end;
 
   TShapesFormat = Class of TShapesReader;
@@ -261,10 +263,17 @@ end;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Constructor TShapesReader.Create(const FileName: string);
+Constructor TShapesReader.Create(FileName: string);
 begin
   inherited Create;
   FFileName := FileName;
+end;
+
+Function TShapesReader.ReadShape(out Shape: TGISShape): Boolean;
+Var
+  Properties: TArray<TPair<String,Variant>>;
+begin
+  Result := ReadShape(Shape,Properties);
 end;
 
 end.
