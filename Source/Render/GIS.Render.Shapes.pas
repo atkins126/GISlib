@@ -12,8 +12,9 @@ interface
 ////////////////////////////////////////////////////////////////////////////////
 
 Uses
-  Classes,SysUtils,Types,Graphics,Generics.Defaults,Generics.Collections,GIS,GIS.Shapes,
-  GIS.Shapes.Polygon,GIS.Shapes.Polygon.PolyLabel,GIS.Render.Shapes.PixelConv;
+  Classes, SysUtils, Types, Graphics, Generics.Defaults, Generics.Collections,
+  GIS, GIS.Shapes, GIS.Shapes.Polygon, GIS.Shapes.Polygon.PolyLabel,
+  GIS.Render.PixelConv;
 
 Type
   TPointRenderStyle = (rsCircle,rsSquare,rsTriangleDown,rsTriangleUp,rsBitmap,
@@ -97,9 +98,11 @@ Type
       FBoundingBox: TCoordinateRect;
     Function ShapeLabel(const Shape: Integer): String; virtual;
     Function ShapeRenderer(const Shape: Integer): TCustomShapesLayer.TShapeRenderer; virtual; abstract;
+    Function PaintShape(const Shape: Integer): Boolean; virtual;
     Procedure SetPaintStyle(const Shape: Integer; const Canvas: TCanvas); virtual;
   public
     Constructor Create(const TransparentColor: TColor);
+    Function PaintBoundingBox: TCoordinateRect;
     Procedure DrawLayer(const Canvas: TCanvas;
                         const PixelConverter: TCustomPixelConverter;
                         const Width,Height: Integer); overload;
@@ -123,7 +126,7 @@ Type
     Procedure Clear;
     Procedure Add(Shape: TGISShape);
     Function ShapeCount(ShapeType: TShapeType): Integer;
-    Procedure Read(const FileName: String; const FileFormat: TShapesFormat);
+    Procedure Read(const FileName: String; const FileFormat: TGISShapesFormat);
     Procedure SaveLabelPositions(const FileName: String);
     Procedure ReadLabelPositions(const FileName: String);
     Destructor Destroy; override;
@@ -169,7 +172,7 @@ begin
   var Radius := Layer.FPointRenderSize div 2;
   for var Point := 0 to PointsCount-1 do
   begin
-    var Pixel := PixelConverter.CoordToPixel(Points[Point]);
+    var Pixel := PixelConverter.CoordToPixel(Points[Point]).Round;
     case Layer.FPointRenderStyle of
       rsCircle: Canvas.Ellipse(Pixel.X-Radius,Pixel.Y-Radius,Pixel.X+Radius,Pixel.Y+Radius);
       rsSquare: Canvas.Rectangle(Pixel.X-Radius,Pixel.Y-Radius,Pixel.X+Radius,Pixel.Y+Radius);
@@ -208,11 +211,11 @@ begin
   for var Part := 0 to Lines.Count-1 do
   begin
     var PointsCount := Lines.Parts[Part].Count;
-    var Pixel := PixelConverter.CoordToPixel(Lines[Part,0]);
+    var Pixel := PixelConverter.CoordToPixel(Lines[Part,0]).Round;
     Canvas.MoveTo(Pixel.X,Pixel.Y);
     for var Point := 1 to PointsCount-1 do
     begin
-      Pixel := PixelConverter.CoordToPixel(Lines[Part,Point]);
+      Pixel := PixelConverter.CoordToPixel(Lines[Part,Point]).Round;
       Canvas.LineTo(Pixel.X,Pixel.Y);
     end;
   end;
@@ -283,7 +286,7 @@ begin
   var OuterRing := PolyPolygon.OuterRing;
   SetLength(Pixels,OuterRing.Count);
   for var Point := 0 to OuterRing.Count-1 do
-  Pixels[Point] := PixelConverter.CoordToPixel(OuterRing[Point]);
+  Pixels[Point] := PixelConverter.CoordToPixel(OuterRing[Point]).Round;
   // Draw outer ring
   var PixelBoundingBox := TRect.Union(Pixels);
   if (PixelBoundingBox.Width > 0) and (PixelBoundingBox.Height > 0) then
@@ -304,9 +307,10 @@ begin
           LabelPositions[Outer].Calculated := true;
           LabelPositions[Outer].Position := LabelPosition;
         end;
-      var LabelPixel := PixelConverter.CoordToPixel(LabelPosition);
+      var LabelPixel := PixelConverter.CoordToPixel(LabelPosition).Round;
       var X := LabelPixel.X - (LabelSize.cx div 2);
       var Y := LabelPixel.Y - (LabelSize.cy div 2);
+      Canvas.Brush.Style := bsClear;
       Canvas.TextOut(X,Y,ShapeLabel);
     end;
     // Draw holes
@@ -316,7 +320,7 @@ begin
       var Hole := PolyPolygon.Holes[Inner];
       SetLength(Pixels,Hole.Count);
       for var Point := 0 to Hole.Count-1 do
-      Pixels[Point] := PixelConverter.CoordToPixel(Hole[Point]);
+      Pixels[Point] := PixelConverter.CoordToPixel(Hole[Point]).Round;
       // Draw hole
       Canvas.Brush.Style := bsSolid;
       Canvas.Brush.Color := HolesColor;
@@ -342,8 +346,9 @@ begin
       PolygonBitmap.Canvas.Brush.Color := PolygonBitmap.TransparentColor;
       PolygonBitmap.Canvas.FillRect(Rect(0,0,PolygonBitmap.Width,PolygonBitmap.Height));
       // Draw poly polygon on polygon bitmap
-      PolygonBitmap.Canvas.Brush.Style := Canvas.Brush.Style;
-      PolygonBitmap.Canvas.Brush.Color := Canvas.Brush.Color;
+      PolygonBitmap.Canvas.Font := Canvas.Font;
+      PolygonBitmap.Canvas.Pen := Canvas.Pen;
+      PolygonBitmap.Canvas.Brush := Canvas.Brush;
       Draw(Outer,ShapeLabel,PolygonBitmap.Canvas,PolygonBitmap.TransparentColor,PixelConverter);
       // Draw polygon bitmap on canvas
       Canvas.Draw(0,0,PolygonBitmap);
@@ -414,19 +419,33 @@ begin
   Result := '';
 end;
 
+Function TCustomShapesLayer.PaintShape(const Shape: Integer): Boolean;
+begin
+  Result := true;
+end;
+
 Procedure TCustomShapesLayer.SetPaintStyle(const Shape: Integer; const Canvas: TCanvas);
 begin
+end;
+
+Function TCustomShapesLayer.PaintBoundingBox: TCoordinateRect;
+begin
+  Result.Clear;
+  for var Shape := 0 to FCount-1 do
+  if PaintShape(Shape) then
+  Result.Enclose(ShapeRenderer(Shape).BoundingBox);
 end;
 
 Procedure TCustomShapesLayer.DrawLayer(const Canvas: TCanvas;
                                        const PixelConverter: TCustomPixelConverter;
                                        const Width,Height: Integer);
 begin
-  Viewport := PixelConverter.PixelToCoord(Width,Height);
+  Viewport := PixelConverter.GetViewport;
   PolygonBitmap.SetSize(Width,Height);
   PolygonBitmap.Canvas.Pen := Canvas.Pen;
   PolygonBitmap.Canvas.Brush := Canvas.Brush;
   for var Shape := 0 to FCount-1 do
+  if PaintShape(Shape) then
   begin
     var ShpRenderer := ShapeRenderer(Shape);
     if Viewport.IntersectsWith(ShpRenderer.BoundingBox) then
@@ -522,7 +541,7 @@ begin
   Result := FShapeCount[ShapeType];
 end;
 
-Procedure TShapesLayer.Read(const FileName: String; const FileFormat: TShapesFormat);
+Procedure TShapesLayer.Read(const FileName: String; const FileFormat: TGISShapesFormat);
 Var
   Shape: TGISShape;
 begin
